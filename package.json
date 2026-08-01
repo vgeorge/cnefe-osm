@@ -1,0 +1,8 @@
+{
+  "name": "cnefe-osm",
+  "version": "0.0.1",
+  "description": "CNEFE Brasil — protótipo para apoiar o mapeamento no OSM com dados do CNEFE (IBGE)",
+  "repository": "git@github.com:vgeorge/cnefe-osm.git",
+  "author": "Vitor George <vitor.george@gmail.com>",
+  "license": "MIT"
+}
