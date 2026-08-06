@@ -3,6 +3,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Protocol } from "pmtiles";
 import { toOsmCase } from "./lib/osmCase.js";
+import { parseMapHash, formatMapHash } from "./lib/mapHash.js";
 
 // Register the pmtiles:// protocol once, at module load.
 maplibregl.addProtocol("pmtiles", new Protocol().tile);
@@ -72,26 +73,44 @@ export default function App() {
     );
     const fitBoundsOptions = { padding: 20 };
 
+    // Shareable URL hash (#zoom/lat/lng): if present, both maps start there;
+    // otherwise fall back to the national (Brazil bbox) view. Parsed here so
+    // BOTH constructors get the same initial camera and stay aligned.
+    const initial = parseMapHash(window.location.hash);
+    const initialCamera = initial
+      ? { center: initial.center, zoom: initial.zoom }
+      : { bounds, fitBoundsOptions };
+
     // Bottom map: Positron only. Interactive so wheel/drag over the base-only
     // (right of divider, where the overlay is clipped out) still work; the
     // reentrancy-guarded sync() keeps both cameras aligned.
     const baseMap = new maplibregl.Map({
       container: baseContainer.current,
       style: POSITRON_STYLE,
-      bounds,
-      fitBoundsOptions,
+      ...initialCamera,
       attributionControl: false,
     });
     baseMapRef.current = baseMap;
 
-    // Top map: Positron + CNEFE layers. All interaction lives here.
+    // Top map: Positron + CNEFE layers. All interaction lives here — it also
+    // owns the shareable URL hash (written on moveend below).
     const overlayMap = new maplibregl.Map({
       container: overlayContainer.current,
       style: POSITRON_STYLE,
-      bounds,
-      fitBoundsOptions,
+      ...initialCamera,
     });
     overlayMapRef.current = overlayMap;
+
+    // Write the viewport back to the URL hash (#zoom/lat/lng) on moveend, so the
+    // link is shareable/reloadable. We do this manually (rather than MapLibre's
+    // `hash: true`) because StrictMode double-mounts this effect over two map
+    // instances, and MapLibre's global hash listeners race across that teardown.
+    // history.replaceState keeps it out of the back/forward history.
+    const writeHash = () => {
+      const url = formatMapHash(overlayMap.getCenter(), overlayMap.getZoom());
+      history.replaceState(history.state, "", url);
+    };
+    overlayMap.on("moveend", writeHash);
 
     overlayMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
