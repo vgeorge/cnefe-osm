@@ -3,6 +3,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Protocol } from "pmtiles";
 import { toOsmCase } from "./lib/osmCase.js";
+import { useI18n } from "./i18n/index.jsx";
 
 // Register the pmtiles:// protocol once, at module load.
 maplibregl.addProtocol("pmtiles", new Protocol().tile);
@@ -26,6 +27,15 @@ const HIT_LAYER_ID = "logradouros-hit";
 const LAYER_MINZOOM = 13; // logradouros only render at/above this zoom
 
 export default function App() {
+  const { t, lang, setLang } = useI18n();
+  // The map-init effect runs once ([] deps); its event handlers close over the
+  // mount-time render. Mirror the current translator/language into refs so those
+  // long-lived closures always read the active language.
+  const tRef = useRef(t);
+  tRef.current = t;
+  const langRef = useRef(lang);
+  langRef.current = lang;
+
   const baseContainer = useRef(null);
   const overlayContainer = useRef(null);
   const overlayEl = useRef(null); // the DOM node we clip
@@ -224,15 +234,15 @@ export default function App() {
         if (!feats.length) return;
         const name = feats[0].properties && feats[0].properties.name;
         if (typeof name !== "string" || !name.trim()) {
-          showToast("sem nome");
+          showToast(tRef.current("noName"));
           return;
         }
         const osm = toOsmCase(name);
         try {
           await navigator.clipboard.writeText(osm);
-          showToast(`<span class="ok">✓</span>copiado · ${osm}`);
+          showToast(`<span class="ok">✓</span>${tRef.current("copied")} · ${osm}`);
         } catch (err) {
-          showToast(`falha ao copiar — ${osm}`);
+          showToast(`${tRef.current("copyFailed")} — ${osm}`);
         }
       });
     });
@@ -345,7 +355,7 @@ export default function App() {
       setStatus("");
       return;
     }
-    setStatus("buscando...");
+    setStatus(t("searching"));
     const handle = setTimeout(async () => {
       try {
         // Bias (not restrict) results to the current map view, nationwide.
@@ -359,12 +369,13 @@ export default function App() {
           (viewbox ? "&viewbox=" + viewbox : "") +
           "&q=" +
           encodeURIComponent(q);
-        const res = await fetch(url, { headers: { "Accept-Language": "pt-BR" } });
+        const acceptLang = langRef.current === "pt" ? "pt-BR" : "en";
+        const res = await fetch(url, { headers: { "Accept-Language": acceptLang } });
         const data = await res.json();
         setResults(data);
-        setStatus(data.length ? "" : "nenhum resultado");
+        setStatus(data.length ? "" : tRef.current("noResults"));
       } catch (e) {
-        setStatus("erro na busca");
+        setStatus(tRef.current("searchError"));
       }
     }, 1100); // >= 1s between requests (Nominatim usage policy)
 
@@ -405,7 +416,7 @@ export default function App() {
             CNEFE · IBGE
           </div>
           <div className="side-tag osm" style={{ left: `${dividerX + 10}px` }}>
-            Mapa base · OSM
+            {t("sideOsm")}
           </div>
         </>
       )}
@@ -414,7 +425,7 @@ export default function App() {
         <div className="swipe-divider" style={{ left: `${dividerX}px` }}>
           <div
             className="swipe-handle"
-            title="Arraste para comparar · esquerda: CNEFE (IBGE) · direita: mapa base (OSM)"
+            title={t("swipeTitle")}
             onPointerDown={onHandleDown}
             onTouchStart={onHandleDown}
           />
@@ -424,7 +435,7 @@ export default function App() {
       {showZoomNote && (
         <div className="zoomnote" role="status">
           <span className="dot" />
-          Aproxime para ver os logradouros do CNEFE.
+          {t("zoomNote")}
         </div>
       )}
 
@@ -439,8 +450,8 @@ export default function App() {
             </svg>
             <input
               type="text"
-              aria-label="Buscar logradouro no Brasil"
-              placeholder="Buscar logradouro no Brasil…"
+              aria-label={t("searchAria")}
+              placeholder={t("searchPlaceholder")}
               value={query}
               autoComplete="off"
               onChange={(e) => setQuery(e.target.value)}
@@ -474,21 +485,39 @@ export default function App() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                Comparar
+                {t("compare")}
               </span>
             </label>
-            <button
-              type="button"
-              className="about-btn"
-              aria-haspopup="dialog"
-              onClick={() => setAboutOpen(true)}
-            >
-              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-                <circle cx="7.5" cy="7.5" r="6.2" stroke="currentColor" strokeWidth="1.3" />
-                <path d="M7.5 6.6v4M7.5 4.4v.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-              Sobre
-            </button>
+            <div className="footer-right">
+              <div className="lang-toggle" role="group" aria-label={t("language")}>
+                <button
+                  type="button"
+                  aria-pressed={lang === "pt"}
+                  onClick={() => setLang("pt")}
+                >
+                  PT
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={lang === "en"}
+                  onClick={() => setLang("en")}
+                >
+                  EN
+                </button>
+              </div>
+              <button
+                type="button"
+                className="about-btn"
+                aria-haspopup="dialog"
+                onClick={() => setAboutOpen(true)}
+              >
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+                  <circle cx="7.5" cy="7.5" r="6.2" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M7.5 6.6v4M7.5 4.4v.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                {t("about")}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -512,37 +541,31 @@ export default function App() {
           <div className="modal">
             <div className="modal-head">
               <div>
-                <div className="eyebrow">CNEFE 2022</div>
-                <h2 id="aboutTitle">Logradouros do Brasil</h2>
+                <div className="eyebrow">{t("aboutEyebrow")}</div>
+                <h2 id="aboutTitle">{t("aboutTitle")}</h2>
               </div>
-              <button type="button" className="x" aria-label="Fechar" onClick={() => setAboutOpen(false)}>
+              <button type="button" className="x" aria-label={t("close")} onClick={() => setAboutOpen(false)}>
                 ✕
               </button>
             </div>
             <div className="modal-body">
+              <p>{t("aboutP1")}</p>
               <p>
-                Faces de logradouro do IBGE (Censo 2022) para comparar nomes de ruas com o
-                OpenStreetMap, ao lado do seu editor.
+                {t("aboutP2Before")}
+                <b>{t("compare")}</b>
+                {t("aboutP2After")}
               </p>
-              <p>
-                Clique numa rua para copiar o nome. Ative <b>Comparar</b> para ver CNEFE × OSM
-                lado a lado.
-              </p>
+              <p className="foot">{t("aboutP3")}</p>
               <p className="foot">
-                Confira acentos e caixa antes de colar — o nome é um palpite, não um dado
-                autoritativo. Projeto open-source independente.
-              </p>
-              <p className="foot">
-                Dados do IBGE são de domínio público e podem ser usados no OSM, citando a
-                fonte —{" "}
+                {t("aboutP4Before")}
                 <a
                   href="https://wiki.openstreetmap.org/wiki/CNEFE_data,_IBGE,_Brasil_import"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  wiki do OSM
+                  {t("osmWiki")}
                 </a>
-                .
+                {t("aboutP4After")}
               </p>
             </div>
           </div>
